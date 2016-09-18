@@ -607,7 +607,7 @@ connectblock: CONNECT
   parse_error("Password too long in connect block");
  else if (host == NULL)
   parse_error("Missing host in connect block");
- else if (strchr(host, '*') || strchr(host, '?'))
+ else if (strcmp(host, "*")!=0 && (strchr(host, '*') || strchr(host, '?')))
   parse_error("Invalid host '%s' in connect block", host);
  else if (c_class == NULL)
   parse_error("Missing or non-existent class in connect block");

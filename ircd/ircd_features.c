@@ -530,6 +530,7 @@ static struct FeatureDesc {
   F_B(CONNEXIT_NOTICES, 0, 0, 0),
   F_B(OPLEVELS, 0, 0, feature_notify_oplevels),
   F_B(ZANNELS, 0, 0, 0),
+  F_B(OPENLINK, 0, 0, 0),
   F_B(LOCAL_CHANNELS, 0, 1, set_isupport_chantypes),
   F_B(TOPIC_BURST, 0, 1, 0),
   F_B(DISABLE_GLINES, 0, 0, 0),
