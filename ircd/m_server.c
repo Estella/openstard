@@ -518,6 +518,7 @@ int mr_server(struct Client* cptr, struct Client* sptr, int parc, char* parv[])
 {
   char*            host;
   struct ConfItem* aconf;
+  struct ConfItem* aclosedconf = NULL;
   struct Jupe*     ajupe;
   int              hop;
   int              ret;
@@ -600,7 +601,7 @@ int mr_server(struct Client* cptr, struct Client* sptr, int parc, char* parv[])
 
   update_load();
 
-  if (!(aconf = find_conf_byname(cli_confs(cptr), host, CONF_SERVER)) && (feature_bool(FEAT_OPENLINK) && !(aconf = find_conf_byname(cli_confs(cptr), "*", CONF_SERVER)))) {
+  if (!(aclosedconf = aconf = find_conf_byname(cli_confs(cptr), host, CONF_SERVER)) && (feature_bool(FEAT_OPENLINK) && !(aconf = find_conf_byname(cli_confs(cptr), "*", CONF_SERVER)))) {
     ++ServerStats->is_ref;
     sendto_opmask_butone(0, SNO_OLDSNO, "Access denied. No conf line for "
                          "server %s and no open link server block", cli_name(cptr));
@@ -642,7 +643,7 @@ int mr_server(struct Client* cptr, struct Client* sptr, int parc, char* parv[])
   SetServerYXX(cptr, cptr, parv[6]);
 
   /* Attach any necessary UWorld config items, but not if server is directly attached using an open CN line */
-  if (!(aconf == find_conf_byname(cli_confs(cptr), "*", CONF_SERVER))) attach_confs_byhost(cptr, host, CONF_UWORLD);
+  if (aconf == aclosedconf) attach_confs_byhost(cptr, host, CONF_UWORLD);
 
   if (*parv[7] == '+')
     set_server_flags(cptr, parv[7] + 1);
