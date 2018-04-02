@@ -86,9 +86,12 @@ int ssl_init(void)
   return 0;
 }
 
-int ssl_reinit(void)
+int ssl_reinit(int sig)
 {
   SSL_CTX *temp_ctx;
+
+  if (1 == sig)
+    sendto_opmask_butone(0, SNO_OLDSNO, "Got signal SIGUSR1, reloading SSL certificates");
 
   /* Attempt to reinitialize server context, return on error */
   temp_ctx = ssl_init_server_ctx();
@@ -581,8 +584,15 @@ int ssl_connect(struct Socket* sock, struct ConfItem *aconf)
   if (r<=0) {
     if ((SSL_get_error(sock->ssl, r) == SSL_ERROR_WANT_WRITE) || (SSL_get_error(sock->ssl, r) == SSL_ERROR_WANT_READ))
       return 0; /* Needs to call SSL_connect() again */
-    else
+    else if (SSL_get_error(sock->ssl, r) == SSL_ERROR_SSL) {
+      unsigned long e = ERR_get_error();
+      sendto_opmask_butone(0, SNO_TCPCOMMON, "SSL Error for connection attempt: %s", ERR_error_string(e, NULL));
       return -1; /* Fatal error */
+    }
+    else {
+      sendto_opmask_butone(0, SNO_TCPCOMMON, "Unknown SSL error for connection attempt (%d)", SSL_get_error(sock->ssl, r));
+      return -1; /* Fatal error */
+    }
   }
   return 1; /* Connection complete */
 }
