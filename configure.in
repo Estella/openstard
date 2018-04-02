@@ -837,10 +837,13 @@ unet_maxcon=`ulimit -Sn`
 if test x"$unet_maxcon" = xunlimited; then
     unet_maxcon=1024
 fi
+if test $unet_maxcon -gt 262100; then
+    unet_maxcon=262100
+fi
 unet_maxcon=`expr $unet_maxcon - 4`
 AC_MSG_CHECKING([max connections])
 AC_ARG_WITH([maxcon],
-[  --with-maxcon=maxcon    Maximum number of connections server will accept],
+[  --with-maxcon=maxcon    Maximum number of connections server will accept (capped at 262100)],
 [unet_cv_with_maxcon=$with_maxcon],
 [AC_CACHE_VAL(unet_cv_with_maxcon,
 [unet_cv_with_maxcon=$unet_maxcon])])
