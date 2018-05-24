@@ -461,7 +461,11 @@ struct Ban *find_ban(struct Client *cptr, struct Ban *banlist, int extbantype, i
               !match(banlist->extban.mask, lp->channel->chname))
             ismatch = 1;
           else if (!match(banlist->extban.mask + 1, lp->channel->chname)) {
-            if ((*banlist->extban.mask == '@') && IsChanOp(lp))
+            if ((*banlist->extban.mask == ')') && IsHyperOp(lp))
+              ismatch = 1;
+            else if ((*banlist->extban.mask == '&') && IsSuperOp(lp))
+              ismatch = 1;
+            else if ((*banlist->extban.mask == '@') && IsChanOp(lp))
               ismatch = 1;
             else if ((*banlist->extban.mask == '%') && IsHalfOp(lp))
               ismatch = 1;
@@ -796,6 +800,42 @@ void remove_user_from_all_channels(struct Client* cptr)
 
   while ((chan = (cli_user(cptr))->channel))
     remove_user_from_channel(cptr, chan->channel);
+}
+
+/** Check if this user is a legitimate chan hyperop
+ *
+ * @param cptr	Client to check
+ * @param chptr	Channel to check
+ *
+ * @returns True if the user is a chanop (And not a zombie), False otherwise.
+ * @see \ref zombie
+ */
+int is_hyper_op(struct Client *cptr, struct Channel *chptr)
+{
+  struct Membership* member;
+  assert(chptr);
+  if ((member = find_member_link(chptr, cptr)))
+    return (!IsZombie(member) && IsHyperOp(member));
+
+  return 0;
+}
+
+/** Check if this user is a legitimate chan superop
+ *
+ * @param cptr	Client to check
+ * @param chptr	Channel to check
+ *
+ * @returns True if the user is a chanop (And not a zombie), False otherwise.
+ * @see \ref zombie
+ */
+int is_super_op(struct Client *cptr, struct Channel *chptr)
+{
+  struct Membership* member;
+  assert(chptr);
+  if ((member = find_member_link(chptr, cptr)))
+    return (!IsZombie(member) && IsSuperOp(member));
+
+  return 0;
 }
 
 /** Check if this user is a legitimate chanop
@@ -1176,16 +1216,40 @@ int compare_member_oplevel(const void *mp1, const void *mp2)
 void send_channel_modes(struct Client *cptr, struct Channel *chptr)
 {
   /* The order in which modes are generated is now mandatory */
-  static unsigned int current_flags[8] =
+  static unsigned int current_flags[32] =
       {
-        0,
-        CHFL_VOICE,
-        CHFL_HALFOP,
-	CHFL_VOICE  | CHFL_HALFOP,
-        CHFL_CHANOP,
-        CHFL_CHANOP | CHFL_VOICE,
-        CHFL_CHANOP | CHFL_HALFOP,
-        CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE
+0,
+CHFL_VOICE,
+CHFL_HALFOP,
+CHFL_HALFOP | CHFL_VOICE,
+CHFL_CHANOP,
+CHFL_CHANOP | CHFL_VOICE,
+CHFL_CHANOP | CHFL_HALFOP,
+CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_SUPEROP,
+CHFL_SUPEROP | CHFL_VOICE,
+CHFL_SUPEROP | CHFL_HALFOP,
+CHFL_SUPEROP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_SUPEROP | CHFL_CHANOP,
+CHFL_SUPEROP | CHFL_CHANOP | CHFL_VOICE,
+CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP,
+CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_HYPEROP,
+CHFL_HYPEROP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_HALFOP,
+CHFL_HYPEROP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_CHANOP,
+CHFL_HYPEROP | CHFL_CHANOP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_CHANOP | CHFL_HALFOP,
+CHFL_HYPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_SUPEROP,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_HALFOP,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_HALFOP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_VOICE,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP,
+CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE
       };
   int                first = 1;
   int                efirst = 1;
@@ -1269,8 +1333,8 @@ void send_channel_modes(struct Client *cptr, struct Channel *chptr)
 	/* Only handle the members with the flags that we are interested in. */
         if ((member->status & CHFL_VOICED_OR_OPPED) == current_flags[flag_cnt])
 	{
-	  if (msgq_bufleft(mb) < NUMNICKLEN + 4 + MAXOPLEVELDIGITS)
-	    /* The 4 + MAXOPLEVELDIGITS is a possible ",:vh999". */
+	  if (msgq_bufleft(mb) < NUMNICKLEN + 6 + MAXOPLEVELDIGITS)
+	    /* The 6 + MAXOPLEVELDIGITS is a possible ",:quvh999". */
 	  {
 	    full = 1;           /* Make sure we continue after
 				   sending it so far */
@@ -1297,7 +1361,7 @@ void send_channel_modes(struct Client *cptr, struct Channel *chptr)
 	     * In the two cases where the current mode includes ops,
 	     * we need to add the _absolute_ value of the oplevel to the mode.
 	     */
-	    char tbuf[4 + MAXOPLEVELDIGITS] = ":";
+	    char tbuf[6 + MAXOPLEVELDIGITS] = ":";
 	    int loc = 1;
 
 	    if (HasVoice(member))	/* flag_cnt == 1, 3, 5 and 7 */
@@ -1312,6 +1376,10 @@ void send_channel_modes(struct Client *cptr, struct Channel *chptr)
               else
                 tbuf[loc++] = 'o';
 	    }
+            if (IsSuperOp(member))	/* flag_cnt == 2, 3, 6 and 7 */
+              tbuf[loc++] = 'u';
+            if (IsHyperOp(member))	/* flag_cnt == 2, 3, 6 and 7 */
+              tbuf[loc++] = 'q';
 	    tbuf[loc] = '\0';
 	    msgq_append(&me, mb, tbuf);
 	    new_mode = 0;
@@ -2215,14 +2283,16 @@ modebuf_flush_int(struct ModeBuf *mbuf, int all)
       bufptr_i = &rembuf_i;
     }
 
-    if (MB_TYPE(mbuf, i) & (MODE_CHANOP | MODE_HALFOP | MODE_VOICE)) {
+    if (MB_TYPE(mbuf, i) & (MODE_HYPEROP | MODE_SUPEROP | MODE_CHANOP | MODE_HALFOP | MODE_VOICE)) {
       tmp = strlen(cli_name(MB_CLIENT(mbuf, i)));
 
       if ((totalbuflen - IRCD_MAX(9, tmp)) <= 0) /* don't overflow buffer */
 	MB_TYPE(mbuf, i) |= MODE_SAVE; /* save for later */
       else {
-	bufptr[(*bufptr_i)++] = MB_TYPE(mbuf, i) & MODE_CHANOP ? 'o' :
-                                (MB_TYPE(mbuf, i) & MODE_HALFOP ? 'h' : 'v');
+	bufptr[(*bufptr_i)++] = MB_TYPE(mbuf, i) & MODE_HYPEROP ? 'q' :
+				(MB_TYPE(mbuf, i) & MODE_SUPEROP ? 'u' :
+				(MB_TYPE(mbuf, i) & MODE_CHANOP ? 'o' :
+                                (MB_TYPE(mbuf, i) & MODE_HALFOP ? 'h' : 'v')));
 	totalbuflen -= IRCD_MAX(9, tmp) + 1;
       }
     } else if (MB_TYPE(mbuf, i) & (MODE_BAN | MODE_EXCEPT | MODE_APASS | MODE_UPASS)) {
@@ -2313,7 +2383,7 @@ modebuf_flush_int(struct ModeBuf *mbuf, int all)
       }
 
       /* deal with clients... */
-      if (MB_TYPE(mbuf, i) & (MODE_CHANOP | MODE_HALFOP | MODE_VOICE))
+      if (MB_TYPE(mbuf, i) & (MODE_HYPEROP | MODE_SUPEROP | MODE_CHANOP | MODE_HALFOP | MODE_VOICE))
 	build_string(strptr, strptr_i, cli_name(MB_CLIENT(mbuf, i)), 0, ' ');
 
       /* deal with bans... */
@@ -2437,7 +2507,7 @@ modebuf_flush_int(struct ModeBuf *mbuf, int all)
                                      " %s%s", NumNick(MB_CLIENT(mbuf, i)));
 
       /* deal with other modes that take clients */
-      } else if (MB_TYPE(mbuf, i) & (MODE_CHANOP | MODE_HALFOP | MODE_VOICE)) {
+      } else if (MB_TYPE(mbuf, i) & (MODE_HYPEROP | MODE_SUPEROP | MODE_CHANOP | MODE_HALFOP | MODE_VOICE)) {
 	build_string(strptr, strptr_i, NumNick(MB_CLIENT(mbuf, i)), ' ');
         if (MB_TYPE(mbuf, i) & MODE_ADD)
           build_string(strptro, strptro_i, NumNick(MB_CLIENT(mbuf, i)), ' ');
@@ -2965,6 +3035,18 @@ send_notoper(struct ParseState *state)
 
   send_reply(state->sptr, (state->flags & MODE_PARSE_NOTOPER) ?
 	     ERR_CHANOPRIVSNEEDED : ERR_NOTONCHANNEL, state->chptr->chname);
+
+  state->done |= DONE_NOTOPER;
+}
+
+static void
+send_only_notoper(struct ParseState *state)
+{
+  if (state->done & DONE_NOTOPER)
+    return;
+
+  send_reply(state->sptr,
+	     ERR_CHANOPRIVSNEEDED, state->chptr->chname);
 
   state->done |= DONE_NOTOPER;
 }
@@ -3573,7 +3655,7 @@ bmatch(struct Ban *old_ban, struct Ban *new_ban)
  * @param[in] do_free If non-zero, free \a newban on failure.
  * @return Zero if \a newban could be applied, non-zero if not.
  */
-int apply_ban(struct Ban **banlist, struct Ban *newban, int do_free)
+int apply_ban(struct ParseState *state, struct Ban **banlist, struct Ban *newban, int do_free)
 {
   struct Ban *ban;
   size_t count = 0;
@@ -3613,7 +3695,12 @@ int apply_ban(struct Ban **banlist, struct Ban *newban, int do_free)
     }
     if (remove_count)
         return 0;
-    /* If no matches were found, fail. */
+    /* If no matches were found, fail, but still pretend we unbanned something.
+       (make Wraith happy, etc) */
+    char *bandup;
+    DupString(bandup, newban->banstr);
+    if (state != NULL) modebuf_mode_string(state->mbuf, MODE_DEL | MODE_BAN,
+			bandup, 1);
     if (do_free)
       free_ban(newban);
     return 3;
@@ -3631,7 +3718,7 @@ int apply_ban(struct Ban **banlist, struct Ban *newban, int do_free)
  * @param[in] do_free If non-zero, free \a newban on failure.
  * @return Zero if \a newban could be applied, non-zero if not.
  */
-int apply_except(struct Ban **exceptlist, struct Ban *newban, int do_free)
+int apply_except(struct ParseState *state, struct Ban **exceptlist, struct Ban *newban, int do_free)
 {
   struct Ban *ban;
   size_t count = 0;
@@ -3671,7 +3758,12 @@ int apply_except(struct Ban **exceptlist, struct Ban *newban, int do_free)
     }
     if (remove_count)
         return 0;
-    /* If no matches were found, fail. */
+    /* If no matches were found, fail, but still pretend we unbanned something.
+       (make Wraith happy, etc) */
+    char *bandup;
+    DupString(bandup, newban->banstr);
+    modebuf_mode_string(state->mbuf, MODE_DEL | MODE_EXCEPT,
+			bandup, 1);
     if (do_free)
       free_ban(newban);
     return 3;
@@ -3741,7 +3833,7 @@ mode_parse_ban(struct ParseState *state, int *flag_p)
   set_ban_mask(newban, pmask);
   ircd_strncpy(newban->who, IsUser(state->sptr) ? cli_name(state->sptr) : "*", NICKLEN);
   newban->when = TStime();
-  apply_ban(&state->chptr->banlist, newban, 0);
+  apply_ban(state, &state->chptr->banlist, newban, 0);
 }
 
 /*
@@ -3926,7 +4018,7 @@ mode_parse_except(struct ParseState *state, int *flag_p)
   set_ban_mask(newban, pmask);
   ircd_strncpy(newban->who, IsUser(state->sptr) ? cli_name(state->sptr) : "*", NICKLEN);
   newban->when = TStime();
-  apply_except(&state->chptr->exceptlist, newban, 0);
+  apply_except(state, &state->chptr->exceptlist, newban, 0);
 }
 
 /*
@@ -4096,7 +4188,8 @@ mode_parse_client(struct ParseState *state, int *flag_p)
 
   /* If they're not an oper, they can't change modes */
   if ((state->flags & (MODE_PARSE_NOTOPER | MODE_PARSE_NOTMEMBER)) &&
-      !((*flag_p == MODE_VOICE) && (state->flags & MODE_PARSE_ISHALFOP)))
+      !((*flag_p == MODE_VOICE) && (state->flags & MODE_PARSE_ISHALFOP))
+  )
     notoper = 1;
 
   if (notoper && (state->dir != MODE_DEL)) {
@@ -4109,9 +4202,13 @@ mode_parse_client(struct ParseState *state, int *flag_p)
     if (colon != NULL) {
       *colon++ = '\0';
       req_oplevel = atoi(colon);
-      if (*flag_p == CHFL_VOICE || *flag_p == CHFL_HALFOP || state->dir == MODE_DEL) {
+      // at some point, it will be implemented that SUPEROPs/HYPEROPs are always treated as being OPLEVEL 0 (and unkickable by 0s)
+      // and HYPEROPs are the only people who can kick SUPEROPs.
+      if (*flag_p == CHFL_VOICE || *flag_p == CHFL_HALFOP || *flag_p == CHFL_SUPEROP || *flag_p == CHFL_HYPEROP || state->dir == MODE_DEL) {
         /* Ignore the colon and its argument. */
-      } else if (!(state->flags & MODE_PARSE_FORCE)
+      } else if (
+	!(state->flags & MODE_PARSE_FORCE)
+	  && !(state->flags & MODE_PARSE_ISSUPEROP)
           && state->member
           && (req_oplevel < OpLevel(state->member)
               || (req_oplevel == OpLevel(state->member)
@@ -4126,6 +4223,16 @@ mode_parse_client(struct ParseState *state, int *flag_p)
     }
     /* find client we're manipulating */
     acptr = find_chasing(state->sptr, t_str, NULL);
+    // If we are doing +/-uq, check that the doer is a hyperop or that the mode is being forced.
+    member = find_member_link(state->chptr, acptr);
+    if (!acptr) return;
+    if ((*flag_p == CHFL_HYPEROP || *flag_p == CHFL_SUPEROP || IsSuperOp(member) || IsHyperOp(member)) && (state->dir == MODE_DEL)) {
+      if ((0==(state->flags & MODE_PARSE_ISHYPEROP)) && !(state->flags & MODE_PARSE_FORCE)) {
+        send_only_notoper(state);
+	return;
+        //notoper = 1;
+      }
+    }
   } else {
     if (t_str[5] == ':') {
       t_str[5] = '\0';
@@ -4283,12 +4390,12 @@ mode_process_clients(struct ParseState *state)
         if (IsDelayedJoin(member) && !IsZombie(member))
           RevealDelayedJoin(member);
 	member->status |= (state->cli_change[i].flag &
-			   (MODE_CHANOP | MODE_HALFOP | MODE_VOICE));
+			   (MODE_HYPEROP | MODE_SUPEROP | MODE_CHANOP | MODE_HALFOP | MODE_VOICE));
 	if (state->cli_change[i].flag & MODE_CHANOP)
 	  ClearDeopped(member);
       } else
 	member->status &= ~(state->cli_change[i].flag &
-			    (MODE_CHANOP | MODE_HALFOP | MODE_VOICE));
+			    (MODE_HYPEROP | MODE_SUPEROP | MODE_CHANOP | MODE_HALFOP | MODE_VOICE));
     }
 
     /* accumulate the change */
@@ -4389,6 +4496,8 @@ mode_parse(struct ModeBuf *mbuf, struct Client *cptr, struct Client *sptr,
 	   struct Membership* member)
 {
   static int chan_flags[] = {
+    MODE_SUPEROP,	'u',
+    MODE_HYPEROP,	'q',
     MODE_CHANOP,	'o',
     MODE_HALFOP,	'h',
     MODE_VOICE,		'v',
@@ -4542,6 +4651,8 @@ mode_parse(struct ModeBuf *mbuf, struct Client *cptr, struct Client *sptr,
           mode_parse_dummy(&state, flag_p);
           break;
         }
+      case 'q':
+      case 'u':
       case 'o':
       case 'v':
         mode_parse_client(&state, flag_p);

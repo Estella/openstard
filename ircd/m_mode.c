@@ -151,7 +151,7 @@ m_mode(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
     return 0;
   }
 
-  if (!member || (!IsChanOp(member) && !IsHalfOp(member))) {
+  if (!member || (!IsHyperOp(member) && !IsSuperOp(member) && !IsChanOp(member) && !IsHalfOp(member))) {
     if (IsLocalChannel(chptr->chname) && HasPriv(sptr, PRIV_MODE_LCHAN)) {
       modebuf_init(&mbuf, sptr, cptr, chptr,
 		   (MODEBUF_DEST_CHANNEL | /* Send mode to channel */
@@ -170,6 +170,12 @@ m_mode(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
   hoflags = MODE_PARSE_SET;
   if (member && !IsChanOp(member) && IsHalfOp(member))
     hoflags |= MODE_PARSE_ISHALFOP|MODE_PARSE_NOTOPER;
+
+  if (member && !IsHyperOp(member) && IsSuperOp(member))
+    hoflags |= MODE_PARSE_ISSUPEROP; // opleveling from a super will always take
+
+  if (member && IsHyperOp(member))
+    hoflags |= MODE_PARSE_ISHYPEROP|MODE_PARSE_ISSUPEROP; // desupering/dehypering from a hyper will always take
 
   modebuf_init(&mbuf, sptr, cptr, chptr,
 	       (MODEBUF_DEST_CHANNEL | /* Send mode to channel */

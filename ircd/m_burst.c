@@ -351,7 +351,8 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
 
   /* turn off burst joined flag */
   for (member = chptr->members; member; member = member->next_member)
-    member->status &= ~(CHFL_BURST_JOINED|CHFL_BURST_ALREADY_OPPED|CHFL_BURST_ALREADY_VOICED);
+    member->status &= ~(CHFL_BURST_JOINED|CHFL_BURST_OP|CHFL_BURST_HALFOP|
+			CHFL_BURST_HYPEROP|CHFL_BURST_SUPEROP|CHFL_BURST_VOICE);
 
   if (!chptr->creationtime) /* mark channel as created during BURST */
     chptr->mode.mode |= MODE_BURSTADDED;
@@ -521,6 +522,14 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
                    * Older servers may send XXYYY:ov, in which case we
                    * do not want to use the code for 'v' below.
                    */
+                  if (ptr[1] == 'q') {
+                    current_mode |= CHFL_HYPEROP;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'u') {
+                    current_mode |= CHFL_SUPEROP;
+                    ptr++;
+                  }
                   if (ptr[1] == 'h') {
                     current_mode |= CHFL_HALFOP;
                     ptr++;
@@ -538,6 +547,14 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
                   current_mode = (current_mode & ~CHFL_DELAYED) | CHFL_HALFOP;
                   oplevel = -1; /* subsequent digits are an absolute op-level value. */
 
+                  if (ptr[1] == 'q') {
+                    current_mode |= CHFL_HYPEROP;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'u') {
+                    current_mode |= CHFL_SUPEROP;
+                    ptr++;
+                  }
                   if (ptr[1] == 'v') {
                     current_mode |= CHFL_VOICE;
                     ptr++;
@@ -550,6 +567,51 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
 		  }
 		  current_mode = (current_mode & ~CHFL_DELAYED) | CHFL_VOICE;
 		  oplevel = -1;	/* subsequent digits are an absolute op-level value. */
+
+                  if (ptr[1] == 'q') {
+                    current_mode |= CHFL_HYPEROP;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'u') {
+                    current_mode |= CHFL_SUPEROP;
+                    ptr++;
+                  }
+                }
+		else if (*ptr == 'u') { /* has oplevel 0, immunity from +o kicks, can only be kicked by +q */
+		  if (current_mode_needs_reset) {
+                    current_mode = base_mode;
+		    current_mode_needs_reset = 0;
+		  }
+		  current_mode = (current_mode & ~CHFL_DELAYED) | CHFL_VOICE;
+
+                  if (ptr[1] == 'h') {
+                    current_mode |= CHFL_HALFOP;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'v') {
+                    current_mode |= CHFL_VOICE;
+                    ptr++;
+                  }
+                }
+		else if (*ptr == 'q') { /* has oplevel 0, immunity from +o kicks, can only be kicked by +q */
+		  if (current_mode_needs_reset) {
+                    current_mode = base_mode;
+		    current_mode_needs_reset = 0;
+		  }
+		  current_mode = (current_mode & ~CHFL_DELAYED) | CHFL_VOICE;
+
+                  if (ptr[1] == 'h') {
+                    current_mode |= CHFL_HALFOP;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'v') {
+                    current_mode |= CHFL_VOICE;
+                    ptr++;
+                  }
+                  if (ptr[1] == 'u') {
+                    current_mode |= CHFL_SUPEROP;
+                    ptr++;
+                  }
                 }
 		else if (IsDigit(*ptr)) {
 		  int level_increment = 0;
@@ -644,14 +706,18 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
 	  {
 	    /* The member was already joined (either by CREATE or JOIN).
 	       Remember the current mode. */
+	    if (member->status & CHFL_HYPEROP)
+	      member->status |= CHFL_BURST_HYPEROP;
+	    if (member->status & CHFL_SUPEROP)
+	      member->status |= CHFL_BURST_SUPEROP;
 	    if (member->status & CHFL_CHANOP)
-	      member->status |= CHFL_BURST_ALREADY_OPPED;
+	      member->status |= CHFL_BURST_OP;
             if (member->status & CHFL_HALFOP)
-              member->status |= CHFL_BURST_ALREADY_HALFOPPED;
+              member->status |= CHFL_BURST_HALFOP;
 	    if (member->status & CHFL_VOICE)
-	      member->status |= CHFL_BURST_ALREADY_VOICED;
+	      member->status |= CHFL_BURST_VOICE;
 	    /* Synchronize with the burst. */
-	    member->status |= CHFL_BURST_JOINED | (current_mode & (CHFL_CHANOP|CHFL_HALFOP|CHFL_VOICE));
+	    member->status |= CHFL_BURST_JOINED | (current_mode & (CHFL_HYPEROP|CHFL_SUPEROP|CHFL_CHANOP|CHFL_HALFOP|CHFL_VOICE));
 	    SetOpLevel(member, oplevel);
 	  }
 	}
@@ -694,11 +760,15 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
     /* first deal with channel members */
     for (member = chptr->members; member; member = member->next_member) {
       if (member->status & CHFL_BURST_JOINED) { /* joined during burst */
-	if ((member->status & CHFL_CHANOP) && !(member->status & CHFL_BURST_ALREADY_OPPED))
+	if ((member->status & CHFL_HYPEROP) && !(member->status & CHFL_BURST_HYPEROP))
+	  modebuf_mode_client(mbuf, MODE_ADD | CHFL_HYPEROP, member->user, OpLevel(member));
+	if ((member->status & CHFL_SUPEROP) && !(member->status & CHFL_BURST_SUPEROP))
+	  modebuf_mode_client(mbuf, MODE_ADD | CHFL_SUPEROP, member->user, OpLevel(member));
+	if ((member->status & CHFL_CHANOP) && !(member->status & CHFL_BURST_OP))
 	  modebuf_mode_client(mbuf, MODE_ADD | CHFL_CHANOP, member->user, OpLevel(member));
-        if ((member->status & CHFL_HALFOP) && !(member->status & CHFL_BURST_ALREADY_HALFOPPED))
+        if ((member->status & CHFL_HALFOP) && !(member->status & CHFL_BURST_HALFOP))
           modebuf_mode_client(mbuf, MODE_ADD | CHFL_HALFOP, member->user, OpLevel(member));
-	if ((member->status & CHFL_VOICE) && !(member->status & CHFL_BURST_ALREADY_VOICED))
+	if ((member->status & CHFL_VOICE) && !(member->status & CHFL_BURST_VOICE))
 	  modebuf_mode_client(mbuf, MODE_ADD | CHFL_VOICE, member->user, OpLevel(member));
       } else if (parse_flags & MODE_PARSE_WIPEOUT) { /* wipeout old ops */
 	if (member->status & CHFL_CHANOP)
@@ -708,7 +778,7 @@ int ms_burst(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
 	if (member->status & CHFL_VOICE)
 	  modebuf_mode_client(mbuf, MODE_DEL | CHFL_VOICE, member->user, OpLevel(member));
 	member->status = (member->status
-                          & ~(CHFL_CHANNEL_MANAGER | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE))
+                          & ~(CHFL_CHANNEL_MANAGER | CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE))
 			 | CHFL_DEOPPED;
       }
     }

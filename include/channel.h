@@ -26,6 +26,9 @@
 #ifndef INCLUDED_ircd_defs_h
 #include "ircd_defs.h"        /* NICKLEN */
 #endif
+#ifndef INCLUDED_hash_h
+#include "hash.h"        /* hash*/
+#endif
 #ifndef INCLUDED_sys_types_h
 #include <sys/types.h>
 #define INCLUDED_sys_types_h
@@ -33,9 +36,13 @@
 #ifndef INCLUDED_res_h
 #include "res.h"
 #endif
+#ifndef INCLUDED_ircd_features_h
+#include "ircd_features.h"
+#endif
 
 struct SLink;
 struct Client;
+struct ParseState;
 
 /*
  * General defines
@@ -65,11 +72,11 @@ struct Client;
 #define CHFL_BURST_JOINED       0x0100  /**< Just joined by net.junction */
 #define CHFL_BANNED             0x1000  /**< Channel member is banned */
 #define CHFL_SILENCE_IPMASK     0x2000  /**< silence mask is a CIDR */
-#define CHFL_BURST_ALREADY_OPPED	0x04000  
+#define CHFL_BURST_OP	0x04000  
 					/**< In oob BURST, but was already 
 					 * joined and opped 
 					 */
-#define CHFL_BURST_ALREADY_VOICED	0x08000  
+#define CHFL_BURST_VOICE	0x08000  
 					/**, In oob BURST, but was already 
 					 * joined and voiced 
 					 */
@@ -81,14 +88,18 @@ struct Client;
 					 */
 #define CHFL_DELAYED            0x40000 /**< User's join message is delayed */
 
-#define CHFL_BURST_ALREADY_HALFOPPED	0x400000
+#define CHFL_BURST_HALFOP	0x80000
 					/**< In oob BURST, but was already
 					 * joined and halfopped
 					 */
-#define CHFL_HALFOP             0x800000 /**< Channel half operator */
+#define CHFL_HALFOP             0x100000 /**< Channel half operator */
+#define CHFL_SUPEROP            0x200000 /**< Channel superlative operator */
+#define CHFL_HYPEROP            0x400000 /**< Channel founder (will also be set on Apass use) */
+#define CHFL_BURST_SUPEROP      0x800000 /**< Burst and superop */
+#define CHFL_BURST_HYPEROP      0x1000000 /**< Burst and hyperop */
 
-#define CHFL_OVERLAP         (CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE)
-#define CHFL_VOICED_OR_OPPED (CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE)
+#define CHFL_OVERLAP         (CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE)
+#define CHFL_VOICED_OR_OPPED (CHFL_HYPEROP | CHFL_SUPEROP | CHFL_CHANOP | CHFL_HALFOP | CHFL_VOICE)
 
 #define MBFL_BANVALID           0x0001  /**< MBFL_BANNED bit is valid */
 #define MBFL_BANNED             0x0002  /**< Channel member is banned */
@@ -102,6 +113,8 @@ struct Client;
 #define MBFL_EXCEPTED_QUIET     0x0200 /**< Channel member is ban excepted */
 #define MBFL_EXCEPTVALID_NICK   0x0400 /**< MBFL_EXCEPTED_NICK is valid */
 #define MBFL_EXCEPTED_NICK      0x0800 /**< Channel member is ban excepted */
+#define MBFL_INVEXCEPTVALID     0x1000 /**< MBFL_INVEXCEPTED is valid */
+#define MBFL_INVEXCEPTED        0x2000 /**< Channel member is invex beneficiary */
 
 /* Channel Visibility macros */
 
@@ -125,14 +138,16 @@ struct Client;
 #define MODE_FREE	0x40000 	/**< string needs to be passed to 
 					 * MyFree() */
 #define MODE_BURSTADDED	0x80000		/**< channel was created by a BURST */
-#define MODE_UPASS	0x100000
-#define MODE_APASS	0x200000
-#define MODE_WASDELJOINS 0x400000 	/**< Not DELJOINS, but some joins 
+#define MODE_WASDELJOINS 0x800000 	/**< Not DELJOINS, but some joins 
 					 * pending */
 
 #define MODE_HALFOP     CHFL_HALFOP     /**< +h Halfop */
+#define MODE_SUPEROP     CHFL_SUPEROP     /**< +u channel Unterfuehrer */
+#define MODE_HYPEROP     CHFL_HYPEROP     /**< +q channel Q-owner (sorry!) */
 #define MODE_EXCEPT     0x1000000       /**< +e Ban exception */
 #define MODE_REDIRECT   0x2000000       /**< +L Channel redirect */
+#define MODE_UPASS	0x4000000	// +U upass
+#define MODE_APASS	0x8000000	// +A apass
 
 #define EXMODE_ADMINONLY    0x00000001	/**< +a User mode +a only may join */
 #define EXMODE_OPERONLY     0x00000002	/**< +O User mode +o only may join */
@@ -148,14 +163,14 @@ struct Client;
 
 /** mode flags which take another parameter (With PARAmeterS)
  */
-#define MODE_WPARAS     (MODE_CHANOP|MODE_HALFOP|MODE_VOICE|MODE_BAN|MODE_KEY|MODE_LIMIT|MODE_APASS|MODE_UPASS)
+#define MODE_WPARAS     (MODE_CHANOP|MODE_HALFOP|MODE_VOICE|MODE_BAN|MODE_KEY|MODE_LIMIT|MODE_APASS|MODE_UPASS|MODE_SUPEROP|MODE_HYPEROP)
 
 /** Available Channel modes */
-#define infochanmodes feature_bool(FEAT_OPLEVELS) ? "AabCcDdhikLlMmNnOopQRrSsTtUvZz" : "abCcDdhikLlMmNnOopQRrSsTtvZz"
+#define infochanmodes feature_bool(FEAT_OPLEVELS) ? "AabCcDdhikLlMmNnOopQRrSsTtuUvZz" : "abCcDdhikLlMmNnOopQRrSsTtvZz"
 /** Available Channel modes that take parameters */
 #define infochanmodeswithparams feature_bool(FEAT_OPLEVELS) ? \
-                                (feature_bool(FEAT_HALFOPS) ? "AbhkLloUv" : "AbkLloUv") : \
-                                (feature_bool(FEAT_HALFOPS) ? "bhkLlov" : "bkLlov")
+                                (feature_bool(FEAT_HALFOPS) ? "quAbhkLloUv" : "quAbkLloUv") : \
+                                (feature_bool(FEAT_HALFOPS) ? "qubhkLlov" : "qubkLlov")
 
 #define HoldChannel(x)          (!(x))
 /** name invisible */
@@ -167,9 +182,13 @@ struct Client;
 #define PubChannel(x)           ((!x) || ((x)->mode.mode & \
                                     (MODE_PRIVATE | MODE_SECRET)) == 0)
 
-#define IsGlobalChannel(name)   (*(name) == '#')
-#define IsLocalChannel(name)    (*(name) == '&')
+#define IsGlobalChannel_Old(name)   (*(name) == '#')
+#define ChannelHasModes(name)	(strchr(feature_str(FEAT_CHANTYPES_MODELESS), *(name)) == NULL)
+#define IsGlobalChannel(name)	(strchr(feature_str(FEAT_CHANTYPES_GLOBAL), *(name)) != NULL)
+#define IsLocalChannel(name)	(strchr(feature_str(FEAT_CHANTYPES_LOCAL), *(name)) != NULL)
+#define IsLocalChannel_Old(name)    (*(name) == '&')
 #define IsChannelName(name)     (IsGlobalChannel(name) || IsLocalChannel(name))
+#define IsBadNameChannel(name)	(hSeekChannel(name) != NULL && !IsChannelName(name))
 
 typedef enum ChannelGetType {
   CGT_NO_CREATE,
@@ -245,8 +264,11 @@ struct Membership {
 #define IsBanValidQuiet(x)  ((x)->banflags & MBFL_BANVALID_QUIET)
 #define IsBannedNick(x)     ((x)->banflags & MBFL_BANNED_NICK)
 #define IsBanValidNick(x)   ((x)->banflags & MBFL_BANVALID_NICK)
-#define IsChanOp(x)         ((x)->status & CHFL_CHANOP)
+#define IsOnlyChanOp(x)     ((x)->status & CHFL_CHANOP)
 #define IsHalfOp(x)         ((x)->status & CHFL_HALFOP)
+#define IsSuperOp(x)        ((x)->status & CHFL_SUPEROP)
+#define IsHyperOp(x)        ((x)->status & CHFL_HYPEROP)
+#define IsChanOp(x)         ((x)->status & (CHFL_CHANOP|CHFL_SUPEROP|CHFL_HYPEROP))
 #define ExtBanTypes(x)      ((x)->extbantype)
 #define OpLevel(x)          ((x)->oplevel)
 #define HasVoice(x)         ((x)->status & CHFL_VOICE)
@@ -553,6 +575,8 @@ extern int mode_parse(struct ModeBuf *mbuf, struct Client *cptr,
 #define MODE_PARSE_WIPEOUT	0x40	/**< wipe out +k and +l during burst */
 #define MODE_PARSE_BURST	0x80	/**< be even more strict w/extra args */
 #define MODE_PARSE_ISHALFOP	0x100	/**< op and halfop differentiation */
+#define MODE_PARSE_ISSUPEROP	0x200	/**< op and halfop differentiation */
+#define MODE_PARSE_ISHYPEROP	0x400	/**< op and halfop differentiation */
 
 extern void joinbuf_init(struct JoinBuf *jbuf, struct Client *source,
 			 struct Client *connect, unsigned int type,
@@ -562,8 +586,8 @@ extern void joinbuf_join(struct JoinBuf *jbuf, struct Channel *chan,
 extern int joinbuf_flush(struct JoinBuf *jbuf);
 extern struct Ban *make_ban(const char *banstr);
 extern struct Ban *find_ban(struct Client *cptr, struct Ban *banlist, int extbantype, int level);
-extern int apply_ban(struct Ban **banlist, struct Ban *newban, int free);
-extern int apply_except(struct Ban **banlist, struct Ban *newban, int do_free);
+extern int apply_ban(struct ParseState *, struct Ban **banlist, struct Ban *newban, int free);
+extern int apply_except(struct ParseState *, struct Ban **banlist, struct Ban *newban, int do_free);
 extern void free_ban(struct Ban *ban);
 
 extern int SetAutoChanModes(struct Channel *chptr);

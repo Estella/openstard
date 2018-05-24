@@ -148,6 +148,14 @@ int m_kick(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
   if (IsChanOp(member) && IsHalfOp(member2) && !IsChanOp(member2))
     return send_reply(sptr, ERR_HALFCANTKICKOP, name);
 
+  /* Prevent ops & supers from kicking superops */
+  if (IsSuperOp(member) && !IsHyperOp(member2))
+    return send_reply(sptr, ERR_HALFCANTKICKOP, name);
+
+  /* Prevent ops & supers from kicking hyperops */
+  if (IsHyperOp(member) && !IsHyperOp(member2))
+    return send_reply(sptr, ERR_HALFCANTKICKOP, name);
+
   /* Don't allow to kick member with a higher op-level,
    * or members with the same op-level unless both are MAXOPLEVEL.
    */

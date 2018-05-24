@@ -172,6 +172,18 @@ void do_names(struct Client* sptr, struct Channel* chptr, int filter)
     needs_space=1;
     if (IsZombie(member)) {
       if ((IsNamesX(sptr) || CapActive(sptr, CAP_NAMESX)) || !done_prefix) {
+        buf[idx++] = '.';
+        done_prefix = 1;
+      }
+    }
+    if (IsHyperOp(member)) {
+      if ((IsNamesX(sptr) || CapActive(sptr, CAP_NAMESX)) || !done_prefix) {
+        buf[idx++] = '*';
+        done_prefix = 1;
+      }
+    }
+    if (IsSuperOp(member)) {
+      if ((IsNamesX(sptr) || CapActive(sptr, CAP_NAMESX)) || !done_prefix) {
         buf[idx++] = '!';
         done_prefix = 1;
       }

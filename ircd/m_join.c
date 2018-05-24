@@ -116,7 +116,7 @@ void do_join(struct Client *cptr, struct Client *sptr, struct JoinBuf *join,
   }
 
   if (!(chptr = FindChannel(chan))) {
-    if (((chan[0] == '&') && !feature_bool(FEAT_LOCAL_CHANNELS))
+    if ((IsLocalChannel(chan) && !feature_bool(FEAT_LOCAL_CHANNELS))
         || strlen(chan) > IRCD_MIN(CHANNELLEN, feature_int(FEAT_CHANNELLEN))) {
       send_reply(sptr, ERR_NOSUCHCHANNEL, chan);
       return;
@@ -137,7 +137,7 @@ void do_join(struct Client *cptr, struct Client *sptr, struct JoinBuf *join,
       return;
     }
 
-    joinbuf_join(create, chptr, CHFL_CHANOP | CHFL_CHANNEL_MANAGER);
+    joinbuf_join(create, chptr, ChannelHasModes(chan) ? CHFL_CHANOP | CHFL_HYPEROP | CHFL_CHANNEL_MANAGER : 0);
   } else if (find_member_link(chptr, sptr)) {
     return; /* already on channel */
   } else if (check_target_limit(sptr, chptr, chptr->chname, 0)) {

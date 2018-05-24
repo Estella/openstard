@@ -101,7 +101,7 @@ apply_silence(struct Client *sptr, char *mask)
   }
 
   /* Apply it to the silence list. */
-  res = apply_ban(&cli_user(sptr)->silence, sile, 1);
+  res = apply_ban(NULL, &cli_user(sptr)->silence, sile, 1);
   return res ? NULL : sile;
 }
 

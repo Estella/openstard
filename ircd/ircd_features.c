@@ -249,8 +249,8 @@ feature_notify_oplevels(void)
 static void
 feature_notify_halfops(void)
 {
-  add_isupport_s("PREFIX", feature_bool(FEAT_HALFOPS) ? "(ohv)@%+" : "(ov)@+");
-  add_isupport_s("STATUSMSG", feature_bool(FEAT_HALFOPS) ? "@%+" : "@+");
+  add_isupport_s("PREFIX", feature_bool(FEAT_HALFOPS) ? "(quohv)*!@%+" : "(quov)*!@+");
+  add_isupport_s("STATUSMSG", feature_bool(FEAT_HALFOPS) ? "*!@%+" : "*!@+");
 }
 
 static void
@@ -412,7 +412,12 @@ set_isupport_channellen(void)
 static void
 set_isupport_chantypes(void)
 {
-    add_isupport_s("CHANTYPES", feature_bool(FEAT_LOCAL_CHANNELS) ? "#&" : "#");
+    char totalchan[BUFSIZE] = "";
+
+    strcat(totalchan, feature_str(FEAT_CHANTYPES_GLOBAL));
+    if (feature_bool(FEAT_LOCAL_CHANNELS)) strcat(totalchan, feature_str(FEAT_CHANTYPES_LOCAL));
+
+    add_isupport_s("CHANTYPES", totalchan);
 }
 
 /** Set NETWORK, self explanatory */
@@ -556,6 +561,10 @@ static struct FeatureDesc {
   F_I(IPCHECK_CLONE_PERIOD, 0, 40, 0),
   F_I(IPCHECK_CLONE_DELAY, 0, 600, 0),
   F_I(CHANNELLEN, 0, 200, set_isupport_channellen),
+
+  F_S(CHANTYPES_MODELESS, FEAT_CASE | FEAT_NULL, "+", set_isupport_chantypes),
+  F_S(CHANTYPES_GLOBAL, FEAT_CASE, "#+", set_isupport_chantypes),
+  F_S(CHANTYPES_LOCAL, FEAT_CASE | FEAT_NULL, "&", set_isupport_chantypes),
 
   /* Some misc. default paths */
   F_S(MPATH, FEAT_CASE | FEAT_MYOPER, "ircd.motd", motd_init),

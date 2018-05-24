@@ -1395,7 +1395,7 @@ Optional Packages:
                           /usr/local/include)
   --with-geoip-libs=dir   Specify location of GeoIP libs (default:
                           /usr/local/lib)
-  --with-maxcon=maxcon    Maximum number of connections server will accept
+  --with-maxcon=maxcon    Maximum number of connections server will accept (capped at 262100)
 
 Some influential environment variables:
   CC          C compiler command
@@ -7721,6 +7721,9 @@ fi
 unet_maxcon=`ulimit -Sn`
 if test x"$unet_maxcon" = xunlimited; then
     unet_maxcon=1024
+fi
+if test $unet_maxcon -gt 262100; then
+    unet_maxcon=262100
 fi
 unet_maxcon=`expr $unet_maxcon - 4`
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking max connections" >&5
